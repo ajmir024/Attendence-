@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Attendance Sheet</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to right, #e0f7fa, #e8f5e9);
+      margin: 0;
+      padding: 0;
+    }
+    h2 {
+      text-align: center;
+      color: #2e7d32;
+      margin-top: 20px;
+    }
+    table {
+      border-collapse: collapse;
+      margin: 20px auto;
+      background: #fff;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+    }
+    th, td {
+      border: 1px solid #bbb;
+      padding: 8px 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #c8e6c9;
+      color: #1b5e20;
+      font-weight: bold;
+    }
+    input[type="text"], select {
+      padding: 6px 8px;
+      border: 1px solid #90a4ae;
+      border-radius: 5px;
+      margin-left: 5px;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+      outline: none;
+    }
+    button {
+      background: #43a047;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      padding: 6px 12px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    button:hover {
+      background: #2e7d32;
+    }
+    .student-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 5px;
+    }
+    .weekend {
+      background-color: #ef5350;
+      color: white;
+      font-weight: bold;
+    }
+    .offday {
+      background-color: #81c784;
+      font-weight: bold;
+    }
+    .controls {
+      text-align: center;
+      margin-bottom: 20px;
+      background: #f1f8e9;
+      padding: 15px;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+      display: inline-block;
+      margin-left: 50%;
+      transform: translateX(-50%);
+    }
+    .controls label {
+      margin: 0 10px;
+      font-weight: bold;
+      color: #2e7d32;
+    }
+    .date-cell {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-weight: bold;
+    }
+    .date-number {
+      font-size: 14px;
+      color: #1b5e20;
+    }
+    .date-weekday {
+      font-size: 12px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <h2>Attendance Sheet</h2>
+
+  <div class="controls">
+    <button onclick="addStudent()">Add Student</button>
+    <label>Weekend(s):
+      <input id="weekendInput" type="text" placeholder="Sunday, Saturday">
+    </label>
+    <label>Off-day(s):
+      <input id="offdayInput" type="text" placeholder="5, 10-12">
+    </label>
+    <button onclick="applySpecialDays()">Apply</button>
+    <br><br>
+    <label>Year:
+      <select id="yearInput"></select>
+    </label>
+    <label>Month:
+      <select id="monthInput">
+        <option value="0">January</option>
+        <option value="1">February</option>
+        <option value="2">March</option>
+        <option value="3">April</option>
+        <option value="4">May</option>
+        <option value="5">June</option>
+        <option value="6">July</option>
+        <option value="7">August</option>
+        <option value="8">September</option>
+        <option value="9">October</option>
+        <option value="10">November</option>
+        <option value="11">December</option>
+      </select>
+    </label>
+    <br><br>
+    <button onclick="saveLocal()">💾 Save (Local)</button>
+  </div>
+
+  <table id="table"></table>
+
+  <script>
+    let table = document.getElementById("table");
+    let weekdays = ["Sunday","Monday","Tuesday","Wednesday","Thursday","Friday","Saturday"];
+    let monthData = {};
+
+    let yearSelect = document.getElementById("yearInput");
+    let currentYear = new Date().getFullYear();
+    for (let y = currentYear - 10; y <= currentYear + 10; y++) {
+      let option = document.createElement("option");
+      option.value = y;
+      option.text = y;
+      if (y === currentYear) option.selected = true;
+      yearSelect.add(option);
+    }
+
+    let monthSelect = document.getElementById("monthInput");
+    monthSelect.value = new Date().getMonth();
+
+    function updateTable() {
+  buildDefaultTable();
+  loadLocal();
+}
+    yearSelect.addEventListener("change", updateTable);
+    monthSelect.addEventListener("change", updateTable);
+
+    function buildDefaultTable() {
+      let year = parseInt(yearSelect.value);
+      let month = parseInt(monthSelect.value);
+      let key = `${year}-${month}`;
+
+      if (!monthData[key]) monthData[key] = {weekends: [], offDays: []};
+
+      document.getElementById("weekendInput").value = monthData[key].weekends.join(", ");
+      document.getElementById("offdayInput").value = monthData[key].offDays.join(", ");
+
+      buildTable(year, month);
+    }
+
+    function buildTable(year, month) {
+  table.innerHTML = "";
+  let daysInMonth = new Date(year, month + 1, 0).getDate();
+  let key = `${year}-${month}`;
+  let weekendDays = monthData[key].weekends;
+  let offDays = monthData[key].offDays;
+
+  // Get number of students already saved (if any)
+  let saved = JSON.parse(localStorage.getItem(`attendanceData-${year}-${month}`) || "[]");
+  let studentCount = 2; // default
+  if (saved.length > 0) {
+    studentCount = saved[0].length - 1; // subtract 1 for "Dates" column
+  }
+
+  // Build header row
+  let studentRow = table.insertRow();
+  studentRow.insertCell().outerHTML = "<th>Dates</th>";
+  for (let i = 0; i < studentCount; i++) {
+    addStudentColumn(studentRow, "Student " + (i + 1), true);
+  }
+
+  // Build rest of table
+  for (let d = 1; d <= daysInMonth; d++) {
+    let row = table.insertRow();
+    let dateObj = new Date(year, month, d);
+    let weekday = weekdays[dateObj.getDay()];
+
+    let dateCell = row.insertCell();
+    dateCell.innerHTML = `<div class="date-cell"><div class="date-number">${d}</div><div class="date-weekday">${weekday}</div></div>`;
+    renderCellsForRow(row, weekday, d, studentCount, weekendDays, offDays);
+  }
+}
+
+    function renderCellsForRow(row, weekday, dateNumber, studentCount, weekendDays, offDays) {
+      for (let s = 0; s < studentCount; s++) {
+        let td = row.insertCell();
+        if (weekendDays.includes(weekday)) {
+          td.innerText = "Weekend";
+          td.className = "weekend";
+        } else if (offDays.includes(dateNumber)) {
+          td.innerText = "Off-day";
+          td.className = "offday";
+        } else {
+          let checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          td.appendChild(checkbox);
+        }
+      }
+    }
+
+    function addStudentColumn(headerRow, name = "New Student", skipBody = false) {
+  let th = document.createElement("th");
+  let div = document.createElement("div");
+  div.className = "student-header";
+
+  let input = document.createElement("input");
+  input.type = "text";
+  input.value = name;
+
+  let delBtn = document.createElement("button");
+  delBtn.innerText = "Delete";
+  delBtn.onclick = function() { deleteStudent(th.cellIndex); };
+
+  div.appendChild(input);
+  div.appendChild(delBtn);
+  th.appendChild(div);
+  headerRow.appendChild(th);
+
+  if (skipBody) return; // skip adding body cells (used during rebuild)
+
+  let year = parseInt(yearSelect.value);
+  let month = parseInt(monthSelect.value);
+  let key = `${year}-${month}`;
+  let weekendDays = monthData[key].weekends;
+  let offDays = monthData[key].offDays;
+
+  for (let r = 1; r < table.rows.length; r++) {
+    let row = table.rows[r];
+    let dateNumber = parseInt(row.cells[0].querySelector(".date-number").innerText);
+    let weekday = row.cells[0].querySelector(".date-weekday").innerText;
+
+    let td = row.insertCell();
+    if (weekendDays.includes(weekday)) {
+      td.innerText = "Weekend";
+      td.className = "weekend";
+    } else if (offDays.includes(dateNumber)) {
+      td.innerText = "Off-day";
+      td.className = "offday";
+    } else {
+      let checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      td.appendChild(checkbox);
+    }
+  }
+}
+
+    function addStudent() {
+  let headerRow = table.rows[0];
+  if (!headerRow) return; // safety check
+
+  // Create new header cell for student
+  let th = document.createElement("th");
+  let div = document.createElement("div");
+  div.className = "student-header";
+
+  let input = document.createElement("input");
+  input.type = "text";
+  input.value = "New Student";
+
+  let delBtn = document.createElement("button");
+  delBtn.innerText = "Delete";
+  delBtn.onclick = function() { deleteStudent(th.cellIndex); };
+
+  div.appendChild(input);
+  div.appendChild(delBtn);
+  th.appendChild(div);
+  headerRow.appendChild(th);
+
+  // Add a new cell for each existing row in the table body
+  for (let r = 1; r < table.rows.length; r++) {
+    let row = table.rows[r];
+    let dateCell = row.cells[0];
+    if (!dateCell) continue; // safety check
+    let dateNumberElem = dateCell.querySelector(".date-number");
+    let weekdayElem = dateCell.querySelector(".date-weekday");
+    if (!dateNumberElem || !weekdayElem) continue; // safety check
+
+    let dateNumber = parseInt(dateNumberElem.innerText);
+    let weekday = weekdayElem.innerText;
+
+    let td = row.insertCell();
+
+    // Get special days for current month
+    let year = parseInt(yearSelect.value);
+    let month = parseInt(monthSelect.value);
+    let key = `${year}-${month}`;
+    let weekendDays = monthData[key]?.weekends || [];
+    let offDays = monthData[key]?.offDays || [];
+
+    // Render cell
+    if (weekendDays.includes(weekday)) {
+      td.innerText = "Weekend";
+      td.className = "weekend";
+    } else if (offDays.includes(dateNumber)) {
+      td.innerText = "Off-day";
+      td.className = "offday";
+    } else {
+      let checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      td.appendChild(checkbox);
+    }
+  }
+}
+
+    function deleteStudent(colIndex) {
+      for (let r = 0; r < table.rows.length; r++) {
+        table.rows[r].deleteCell(colIndex);
+      }
+    }
+
+    function applySpecialDays() {
+      let weekendInput = document.getElementById("weekendInput").value;
+      let offdayInput = document.getElementById("offdayInput").value;
+
+      let year = parseInt(yearSelect.value);
+      let month = parseInt(monthSelect.value);
+      let key = `${year}-${month}`;
+
+      monthData[key].weekends = weekendInput.split(",").map(d => d.trim());
+
+      let offDays = [];
+      offdayInput.split(",").forEach(part => {
+        if (part.includes("-")) {
+          let [start, end] = part.split("-").map(n => parseInt(n.trim()));
+          for (let i = start; i <= end; i++) offDays.push(i);
+        } else {
+          let n = parseInt(part.trim());
+          if (!isNaN(n)) offDays.push(n);
+        }
+      });
+      monthData[key].offDays = offDays;
+
+      buildTable(year, month);
+    }
+
+    // ----- Save & Load -----
+    function saveLocal() {
+      let year = parseInt(yearSelect.value);
+      let month = parseInt(monthSelect.value);
+      let key = `attendanceData-${year}-${month}`;
+
+      let data = [];
+      for (let i = 0; i < table.rows.length; i++) {
+        let rowData = [];
+        for (let j = 0; j < table.rows[i].cells.length; j++) {
+          let cell = table.rows[i].cells[j];
+          if (cell.querySelector("input")) {
+            let input = cell.querySelector("input");
+            if (input.type === "checkbox") rowData.push(input.checked);
+            else if (input.type === "text") rowData.push(input.value);
+          } else {
+            rowData.push(cell.innerText);
+          }
+        }
+        data.push(rowData);
+      }
+      localStorage.setItem(key, JSON.stringify(data));
+      alert(`✅ Saved ${year}-${month+1} data to local storage!`);
+    }
+
+    function loadLocal() {
+  let year = parseInt(yearSelect.value);
+  let month = parseInt(monthSelect.value);
+  let key = `attendanceData-${year}-${month}`;
+
+  let saved = JSON.parse(localStorage.getItem(key) || "[]");
+
+  if (saved.length > 0) {
+    // ✅ Rebuild table from saved data
+    rebuildTable(saved);
+  } else {
+    // ✅ If no saved data, build default table
+    buildDefaultTable();
+  }
+}
+      
+    
+
+    function rebuildTable(saved) {
+      table.innerHTML = "";
+      saved.forEach((rowData, rowIndex) => {
+        let row = table.insertRow();
+        rowData.forEach((cellData, colIndex) => {
+          let cell = row.insertCell();
+          if (rowIndex === 0 && colIndex > 0) {
+            let div = document.createElement("div");
+            div.className = "student-header";
+            let input = document.createElement("input");
+            input.type = "text";
+            input.value = cellData;
+            let delBtn = document.createElement("button");
+            delBtn.innerText = "Delete";
+            delBtn.onclick = function() { deleteStudent(colIndex); };
+            div.appendChild(input);
+            div.appendChild(delBtn);
+            cell.appendChild(div);
+          } else if (typeof cellData === "boolean") {
+            let checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.checked = cellData;
+            cell.appendChild(checkbox);
+          } else {
+            cell.innerText = cellData;
+            if (cellData === "Weekend") cell.className = "weekend";
+            if (cellData === "Off-day") cell.className = "offday";
+          }
+        });
+      });
+    }
+
+    window.addEventListener("DOMContentLoaded", () => {
+      buildDefaultTable();
+      loadLocal();
+    });
+  </script>
+</body>
+</html>
